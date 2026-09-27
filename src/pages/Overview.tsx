@@ -99,6 +99,7 @@ export default function Overview() {
               <XAxis dataKey="category" tick={{ fontSize: 12, fill: 'var(--soft)' }} axisLine={{ stroke: 'var(--line)' }} tickLine={false} />
               <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: 'var(--soft)' }} axisLine={false} tickLine={false} />
               <Tooltip
+                cursor={{ fill: 'var(--card)' }}
                 contentStyle={{ borderRadius: 8, borderColor: 'var(--card-bd)', fontSize: 13 }}
               />
               <Bar dataKey="count" radius={[4, 4, 0, 0]}>

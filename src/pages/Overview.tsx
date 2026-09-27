@@ -113,7 +113,7 @@ export default function Overview() {
 
         <div className="card">
           <h3 style={{ marginBottom: 14 }}>Caller satisfaction</h3>
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative', pointerEvents: 'none' }}>
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie

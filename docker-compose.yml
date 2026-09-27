@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: smartbot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: smartbot
+      POSTGRES_PASSWORD: smartbot_dev_pw
+      POSTGRES_DB: smartbot
+    ports:
+      - '5433:5432'
+    volumes:
+      - smartbot_pgdata:/var/lib/postgresql/data
+
+volumes:
+  smartbot_pgdata:

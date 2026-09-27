@@ -7,11 +7,12 @@ import { COOKIE_NAME, requireAuth } from '../middleware.js'
 const router = Router()
 
 const isProd = process.env.NODE_ENV === 'production'
-// Frontend and backend live on different domains in production, so the session cookie
-// must be SameSite=None (requires Secure) to be sent on cross-site requests at all.
+// The frontend proxies /api/* to this backend (see vercel.json), so requests are
+// same-origin from the browser's point of view — a plain Lax cookie works everywhere,
+// including Incognito/strict-privacy browsers that block cross-site SameSite=None cookies.
 const cookieOptions = {
   httpOnly: true,
-  sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
+  sameSite: 'lax' as const,
   secure: isProd,
   maxAge: 12 * 60 * 60 * 1000,
 }

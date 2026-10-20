@@ -14,7 +14,10 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-brand">Smartbot Console</div>
+      <div className="sidebar-brand">
+        <img src="/logo.jpeg" alt="" width={28} height={28} style={{ borderRadius: 7 }} />
+        Smartbot Console
+      </div>
       <nav className="sidebar-nav">
         {user?.role === 'supervisor' && (
           <>

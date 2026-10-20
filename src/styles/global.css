@@ -52,6 +52,9 @@ button {
 }
 
 .sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-family: var(--font-heading);
   font-size: 18px;
   font-weight: 600;

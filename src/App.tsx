@@ -8,6 +8,7 @@ import RealLive from './pages/RealLive'
 import JoinCall from './pages/JoinCall'
 import MyCalls from './pages/MyCalls'
 import Login from './pages/Login'
+import NotFound from './pages/NotFound'
 import { RequireAuth } from './auth/RequireAuth'
 
 function AppShell({ children }: { children: React.ReactNode }) {
@@ -94,6 +95,7 @@ export default function App() {
           </RequireAuth>
         }
       />
+      <Route path="*" element={<NotFound />} />
     </Routes>
   )
 }

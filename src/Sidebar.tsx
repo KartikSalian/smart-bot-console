@@ -34,6 +34,9 @@ export default function Sidebar() {
             <NavLink to="/live" className={linkClass}>
               Live calls
             </NavLink>
+            <NavLink to="/live-real" className={linkClass}>
+              Live call (real)
+            </NavLink>
             <NavLink to="/my-calls" className={linkClass}>
               My calls
             </NavLink>

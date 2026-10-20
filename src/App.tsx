@@ -4,6 +4,8 @@ import Overview from './pages/Overview'
 import CallList from './pages/CallList'
 import CallDetail from './pages/CallDetail'
 import Live from './pages/Live'
+import RealLive from './pages/RealLive'
+import JoinCall from './pages/JoinCall'
 import MyCalls from './pages/MyCalls'
 import Login from './pages/Login'
 import { RequireAuth } from './auth/RequireAuth'
@@ -61,6 +63,17 @@ export default function App() {
           </RequireAuth>
         }
       />
+      <Route
+        path="/live-real"
+        element={
+          <RequireAuth allow={['agent']}>
+            <AppShell>
+              <RealLive />
+            </AppShell>
+          </RequireAuth>
+        }
+      />
+      <Route path="/join/:sessionId" element={<JoinCall />} />
       <Route
         path="/my-calls"
         element={

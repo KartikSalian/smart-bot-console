@@ -8,6 +8,7 @@ export default function JoinCall() {
   const [status, setStatus] = useState<'idle' | 'recording' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
   const [chunksSent, setChunksSent] = useState(0)
+  const [chunksSkipped, setChunksSkipped] = useState(0)
   const micRef = useRef<MicCaptureHandle | null>(null)
 
   useEffect(() => {
@@ -20,13 +21,16 @@ export default function JoinCall() {
     if (!sessionId) return
     setError(null)
     try {
-      const mic = await startMicCapture(async (wav, tSec) => {
-        try {
-          await submitChunk(sessionId, 'customer', tSec, wav)
-          setChunksSent((n) => n + 1)
-        } catch (err) {
-          console.error('Chunk submission failed:', err)
-        }
+      const mic = await startMicCapture({
+        onChunk: async (wav, tSec) => {
+          try {
+            await submitChunk(sessionId, 'customer', tSec, wav)
+            setChunksSent((n) => n + 1)
+          } catch (err) {
+            console.error('Chunk submission failed:', err)
+          }
+        },
+        onSkip: () => setChunksSkipped((n) => n + 1),
       })
       micRef.current = mic
       setStatus('recording')
@@ -86,7 +90,9 @@ export default function JoinCall() {
               />
               <span style={{ fontWeight: 600, fontSize: 14 }}>Recording</span>
             </div>
-            <p style={{ color: 'var(--soft)', fontSize: 13, marginBottom: 16 }}>{chunksSent} chunks sent</p>
+            <p style={{ color: 'var(--soft)', fontSize: 13, marginBottom: 16 }}>
+              {chunksSent} chunks sent · {chunksSkipped} silent chunks skipped
+            </p>
             <button
               onClick={handleLeave}
               style={{

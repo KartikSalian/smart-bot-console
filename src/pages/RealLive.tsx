@@ -12,6 +12,7 @@ export default function RealLive() {
   const [recording, setRecording] = useState(false)
   const [chunks, setChunks] = useState<LiveChunkResult[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [skippedCount, setSkippedCount] = useState(0)
   const micRef = useRef<MicCaptureHandle | null>(null)
   const pollRef = useRef<number | null>(null)
 
@@ -37,12 +38,15 @@ export default function RealLive() {
         }
       }, 1500)
 
-      const mic = await startMicCapture(async (wav, tSec) => {
-        try {
-          await submitChunk(id, 'agent', tSec, wav)
-        } catch (err) {
-          console.error('Chunk submission failed:', err)
-        }
+      const mic = await startMicCapture({
+        onChunk: async (wav, tSec) => {
+          try {
+            await submitChunk(id, 'agent', tSec, wav)
+          } catch (err) {
+            console.error('Chunk submission failed:', err)
+          }
+        },
+        onSkip: () => setSkippedCount((n) => n + 1),
       })
       micRef.current = mic
       setRecording(true)
@@ -144,7 +148,7 @@ export default function RealLive() {
                 <h3>Call in progress</h3>
                 <p style={{ color: 'var(--soft)', fontSize: 13 }}>
                   {recording ? 'Recording your mic...' : 'Stopped'} · {customerChunks.length} customer
-                  chunks · {agentChunks.length} agent chunks
+                  chunks · {agentChunks.length} agent chunks · {skippedCount} silent chunks skipped (you)
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>

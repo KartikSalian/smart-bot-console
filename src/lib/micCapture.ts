@@ -1,5 +1,16 @@
 const SAMPLE_RATE = 16000
 const CHUNK_SECONDS = 3
+// Simple energy-based voice activity detection. RMS (root-mean-square) of a silent/background
+// chunk is typically well under 0.01 for normalized float samples; actual speech is well above
+// it. Not a full VAD model — just enough to skip dead air and cut load on the model endpoint.
+const SILENCE_RMS_THRESHOLD = 0.015
+
+/** Root-mean-square energy of a chunk of normalized (-1..1) float audio samples. */
+export function computeRms(samples: Float32Array): number {
+  let sumSquares = 0
+  for (let i = 0; i < samples.length; i++) sumSquares += samples[i] * samples[i]
+  return Math.sqrt(sumSquares / samples.length)
+}
 
 function floatTo16BitPCM(input: Float32Array): Int16Array {
   const out = new Int16Array(input.length)
@@ -45,8 +56,16 @@ export interface MicCaptureHandle {
   stop: () => void
 }
 
-/** Captures mic audio and calls onChunk with a real WAV blob every ~3 seconds. */
-export async function startMicCapture(onChunk: (wav: Blob, tSec: number) => void): Promise<MicCaptureHandle> {
+export interface MicCaptureCallbacks {
+  /** A chunk had real speech energy and was sent for scoring. */
+  onChunk: (wav: Blob, tSec: number) => void
+  /** A chunk was silent/below the VAD threshold and was skipped — not sent to the model. */
+  onSkip?: (tSec: number, rms: number) => void
+}
+
+/** Captures mic audio and calls onChunk with a real WAV blob every ~3 seconds, skipping silent chunks. */
+export async function startMicCapture(callbacks: MicCaptureCallbacks): Promise<MicCaptureHandle> {
+  const { onChunk, onSkip } = callbacks
   const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: SAMPLE_RATE } })
   const audioContext = new AudioContext({ sampleRate: SAMPLE_RATE })
   const source = audioContext.createMediaStreamSource(stream)
@@ -72,8 +91,14 @@ export async function startMicCapture(onChunk: (wav: Blob, tSec: number) => void
         offset += chunk.length
       }
       const chunkSamples = merged.subarray(0, samplesPerChunk)
-      const wav = buildWav(floatTo16BitPCM(chunkSamples), SAMPLE_RATE)
-      onChunk(wav, tSec)
+      const rms = computeRms(chunkSamples)
+
+      if (rms >= SILENCE_RMS_THRESHOLD) {
+        const wav = buildWav(floatTo16BitPCM(chunkSamples), SAMPLE_RATE)
+        onChunk(wav, tSec)
+      } else {
+        onSkip?.(tSec, rms)
+      }
       tSec += CHUNK_SECONDS
 
       const remainder = merged.subarray(samplesPerChunk)

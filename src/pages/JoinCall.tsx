@@ -10,6 +10,7 @@ export default function JoinCall() {
   const [chunksSent, setChunksSent] = useState(0)
   const [chunksSkipped, setChunksSkipped] = useState(0)
   const micRef = useRef<MicCaptureHandle | null>(null)
+  const nextTSecRef = useRef(0)
 
   useEffect(() => {
     return () => {
@@ -22,7 +23,9 @@ export default function JoinCall() {
     setError(null)
     try {
       const mic = await startMicCapture({
+        startTSec: nextTSecRef.current,
         onChunk: async (wav, tSec) => {
+          nextTSecRef.current = tSec + 3
           try {
             await submitChunk(sessionId, 'customer', tSec, wav)
             setChunksSent((n) => n + 1)
@@ -30,7 +33,10 @@ export default function JoinCall() {
             console.error('Chunk submission failed:', err)
           }
         },
-        onSkip: () => setChunksSkipped((n) => n + 1),
+        onSkip: (tSec) => {
+          nextTSecRef.current = tSec + 3
+          setChunksSkipped((n) => n + 1)
+        },
       })
       micRef.current = mic
       setStatus('recording')

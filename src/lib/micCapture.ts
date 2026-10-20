@@ -61,11 +61,13 @@ export interface MicCaptureCallbacks {
   onChunk: (wav: Blob, tSec: number) => void
   /** A chunk was silent/below the VAD threshold and was skipped — not sent to the model. */
   onSkip?: (tSec: number, rms: number) => void
+  /** Where to start the chunk timeline — pass the last tSec already submitted when resuming a call. */
+  startTSec?: number
 }
 
 /** Captures mic audio and calls onChunk with a real WAV blob every ~3 seconds, skipping silent chunks. */
 export async function startMicCapture(callbacks: MicCaptureCallbacks): Promise<MicCaptureHandle> {
-  const { onChunk, onSkip } = callbacks
+  const { onChunk, onSkip, startTSec = 0 } = callbacks
   const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: SAMPLE_RATE } })
   const audioContext = new AudioContext({ sampleRate: SAMPLE_RATE })
   const source = audioContext.createMediaStreamSource(stream)
@@ -75,7 +77,7 @@ export async function startMicCapture(callbacks: MicCaptureCallbacks): Promise<M
 
   let collected: Float32Array[] = []
   let collectedLength = 0
-  let tSec = 0
+  let tSec = startTSec
   const samplesPerChunk = SAMPLE_RATE * CHUNK_SECONDS
 
   processor.onaudioprocess = (e) => {

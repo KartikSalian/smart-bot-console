@@ -26,7 +26,9 @@ export default function RealLive() {
   async function handleStart() {
     setError(null)
     try {
-      const id = await startLiveSession()
+      // Resuming an existing call keeps the same session (and join link) so the customer's
+      // device doesn't get silently orphaned. Only create a new session the first time.
+      const id = sessionId ?? (await startLiveSession())
       setSessionId(id)
 
       pollRef.current = window.setInterval(async () => {
@@ -38,7 +40,9 @@ export default function RealLive() {
         }
       }, 1500)
 
+      const lastOwnTSec = chunks.filter((c) => c.role === 'agent').reduce((max, c) => Math.max(max, c.tSec), -3)
       const mic = await startMicCapture({
+        startTSec: lastOwnTSec + 3,
         onChunk: async (wav, tSec) => {
           try {
             await submitChunk(id, 'agent', tSec, wav)

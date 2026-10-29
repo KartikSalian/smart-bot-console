@@ -30,3 +30,4 @@ server/sample_audio/
 *.sw?
 __pycache__/
 *.pyc
+aws-marketplace-fulfillment/function.zip

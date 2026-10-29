@@ -25,7 +25,7 @@ class TestFulfilmentHandler(unittest.TestCase):
         result = lambda_function.handler(event, None)
 
         self.assertEqual(result["statusCode"], 302)
-        self.assertEqual(result["headers"]["Location"], "https://www.smartbotsoftware.com/aws-marketplace")
+        self.assertEqual(result["headers"]["Location"], "https://www.smartbotsoftware.com/#contact-us")
         self.mock_table.put_item.assert_not_called()
 
     def test_post_without_token_redirects_without_touching_dynamo(self):
@@ -48,7 +48,7 @@ class TestFulfilmentHandler(unittest.TestCase):
         result = lambda_function.handler(event, None)
 
         self.assertEqual(result["statusCode"], 302)
-        self.assertEqual(result["headers"]["Location"], "https://www.smartbotsoftware.com/aws-marketplace")
+        self.assertEqual(result["headers"]["Location"], "https://www.smartbotsoftware.com/#contact-us")
         self.mock_table.put_item.assert_called_once()
         item = self.mock_table.put_item.call_args.kwargs["Item"]
         self.assertEqual(item["token"], "test123")

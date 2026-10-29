@@ -20,7 +20,7 @@ from urllib.parse import parse_qs
 import boto3
 
 TABLE_NAME = os.environ.get("TABLE_NAME", "aws-mp-registrations")
-REDIRECT_URL = "https://www.smartbotsoftware.com/aws-marketplace"
+REDIRECT_URL = "https://www.smartbotsoftware.com/#contact-us"
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(TABLE_NAME)

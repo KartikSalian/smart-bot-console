@@ -2,46 +2,55 @@
 
 A minimal Lambda that catches the POST AWS Marketplace sends when a buyer
 subscribes, saves the registration token, and redirects them to
-`smartbotsoftware.com/aws-marketplace` since Webflow can't accept the POST
-directly. Deliberately minimal — no `ResolveCustomer` call, no entitlement
-check yet. That's the next phase, once the full fulfilment flow is built.
+`smartbotsoftware.com/#contact-us` (the site's existing Contact Us form)
+since Webflow can't accept the POST directly. Deliberately minimal — no
+`ResolveCustomer` call, no entitlement check yet. That's the next phase,
+once the full fulfilment flow is built.
 
 ## Status
 
-Code is written and locally tested. **Not yet deployed** — the `KARTIK` IAM
-user doesn't currently have permission to create a Lambda function or a
-DynamoDB table (verified directly, not assumed). Needs:
+**Deployed and live.**
 
-- `lambda:CreateFunction`
-- `lambda:CreateFunctionUrlConfig`
-- `dynamodb:CreateTable`
+- Table `aws-mp-registrations` created in DynamoDB (eu-west-2).
+- Execution role `aws-mp-fulfillment-lambda-role` created, scoped to
+  `PutItem` on just that table plus basic CloudWatch Logs write access
+  (see `execution-role-policy.json`).
+- Lambda function `aws-mp-fulfillment` deployed, Python 3.12.
+- Fronted by an HTTP API Gateway (`aws-mp-fulfillment-api`), not a bare
+  Lambda Function URL — the account has an org-level guardrail blocking
+  public Function URLs, so API Gateway (`AWS_PROXY` integration, no auth)
+  is used as the public entry point instead. Same Lambda code either way.
 
-(IAM role creation for the Lambda's own execution role is already allowed —
-`iam:CreateRole`, `PutRolePolicy`, `PassRole` all work, so that part needs no
-extra grant.)
+**Live endpoint (send this to Declan / set in the Marketplace Management
+Portal):**
 
-## Deploy steps, once permissions are in place
+```
+https://gspde9ay1e.execute-api.eu-west-2.amazonaws.com/
+```
 
-1. **Create the DynamoDB table**: name `aws-mp-registrations`, partition key
-   `token` (String). On-demand billing is fine for this volume.
-2. **Create the execution role** for the Lambda, attach the policy in
-   `execution-role-policy.json` (scoped to `PutItem` on just this table,
-   plus basic CloudWatch Logs write access — nothing broader).
-3. **Create the Lambda function**:
-   - Runtime: Python 3.12
-   - Handler: `lambda_function.handler`
-   - Code: `lambda_function.py`
-   - Environment variable: `TABLE_NAME=aws-mp-registrations` (optional —
-     defaults to this value if unset)
-4. **Add a Function URL** to the Lambda, auth type `NONE`.
-5. **Test it**:
-   ```
-   curl -i -X POST -d "x-amzn-marketplace-token=test123" <function-url>
-   ```
-   Expect a `302` with `Location: https://www.smartbotsoftware.com/aws-marketplace`,
-   and a `test123` row in the DynamoDB table.
-6. Send Declan the Function URL. He updates the Marketplace Management Portal
-   himself — nothing here touches the listing.
+Tested: `curl -i -X POST -d "x-amzn-marketplace-token=test123" <endpoint>`
+returns a `302` to `https://www.smartbotsoftware.com/#contact-us`, and the
+token is confirmed stored in DynamoDB with a `received_at` timestamp.
+
+## Redeploying after a code change
+
+```
+# zip the handler
+powershell -Command "Compress-Archive -Path lambda_function.py -DestinationPath function.zip -Force"
+
+# push the new code to the existing Lambda (from server/, where the AWS SDK clients are installed)
+node -e "
+import('@aws-sdk/client-lambda').then(async ({ LambdaClient, UpdateFunctionCodeCommand }) => {
+  const { readFileSync } = await import('fs');
+  const lambda = new LambdaClient({ region: 'eu-west-2' });
+  await lambda.send(new UpdateFunctionCodeCommand({
+    FunctionName: 'aws-mp-fulfillment',
+    ZipFile: readFileSync('../aws-marketplace-fulfillment/function.zip'),
+  }));
+  console.log('Updated.');
+});
+"
+```
 
 ## Local testing (no AWS access needed)
 

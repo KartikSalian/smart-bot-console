@@ -69,6 +69,34 @@ export interface AudioChunk {
   wav: Buffer
 }
 
+export interface WavValidation {
+  valid: boolean
+  reason?: string
+  durationSec?: number
+}
+
+/** Validates a buffer is mono 8kHz 16-bit PCM WAV (the format real call recordings use), and returns its duration if so. */
+export function validateWav(buf: Buffer): WavValidation {
+  let info: WavInfo
+  try {
+    info = parseWavHeader(buf)
+  } catch {
+    return { valid: false, reason: 'Not a valid WAV file' }
+  }
+  if (info.numChannels !== 1) {
+    return { valid: false, reason: 'Expected mono (1 channel) audio' }
+  }
+  if (info.sampleRate !== 8000) {
+    return { valid: false, reason: 'Expected 8kHz sample rate' }
+  }
+  if (info.bitsPerSample !== 16) {
+    return { valid: false, reason: 'Expected 16-bit PCM audio' }
+  }
+  const blockAlign = (info.numChannels * info.bitsPerSample) / 8
+  const durationSec = info.dataLength / info.sampleRate / blockAlign
+  return { valid: true, durationSec }
+}
+
 /** Splits a WAV file's raw PCM data into fixed-duration WAV chunks, each a standalone valid WAV file. */
 export function chunkWav(buf: Buffer, chunkDurationSec: number): AudioChunk[] {
   const info = parseWavHeader(buf)

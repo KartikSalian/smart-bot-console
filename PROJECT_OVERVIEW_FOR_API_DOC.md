@@ -31,22 +31,45 @@ platform).
   on invocations per instance. (Done to help with load, see below for what
   it did and didn't fix.)
 - **Backend**: Node.js/Express (`server/` directory), TypeScript.
-- **External API** (already built, this session): `POST
-  /api/external/v1/calls/analyze`
+- **External API** (built and revised this session — the original design was
+  synchronous; it was reworked to an async job API before sending anything,
+  per review feedback that a long call holding a connection open was fragile):
+  - `POST /api/external/v1/calls` — submit a call, returns `202` immediately
+    with a `callId` (does not wait for processing).
+  - `GET /api/external/v1/calls/{callId}` — poll for status/progress/result.
   - Auth: `X-API-Key` header, partner keys configured via
     `EXTERNAL_API_KEYS` env var (format `partner:key,partner2:key2`).
-  - Request body: raw WAV audio (mono, 16kHz), `Content-Type: audio/wav`.
-  - Response: JSON `{ chunks: [{ tSec, anger, happy, neutral, sad }, ...] }`
-    — one entry per 3-second chunk of the call.
-  - This is **synchronous**: the client sends the whole call's audio, and
-    the response is held until the full result is ready (no job-ID/polling
-    pattern — decided deliberately, since Phase 1 with CX Assist is
-    post-call/batch testing, not live streaming).
+  - Request body: raw WAV audio, **mono, 8kHz, 16-bit PCM**. This is the exact
+    format our real call recordings use, and the audio is never resampled
+    anywhere in the pipeline — the model is fed exactly what's uploaded. An
+    earlier draft of this file and the validator incorrectly said 16kHz; that
+    was wrong and has been fixed in code and in the doc.
+  - Response (while processing or complete): `{ callId, status, durationSec,
+    progress, chunks: [{ tSec, anger, happy, neutral, sad }, ...], error }`.
+    `chunks` fills in progressively while `status` is `processing`.
+  - Optional `X-Callback-Url` header: on completion/failure, we POST the
+    final result to that URL, signed with `X-Signature: sha256=<hmac>` (HMAC
+    over the raw JSON body, using the partner's own API key as the secret).
+    Delivery retries up to 3 times with backoff; never retried indefinitely,
+    never blocks job processing.
+  - Jobs are stored in the `call_jobs` table in RDS, **including the pending
+    audio** (as `BYTEA`) until the job completes or fails, at which point the
+    audio is cleared immediately (not held for the full 7-day retention
+    period — only the result/metadata is kept that long).
+  - On server startup, any job left `queued`/`processing` from before a
+    restart is automatically re-queued (`resumeUnfinishedJobs`) — this was
+    tested for real: killed the server mid-job, restarted it, confirmed it
+    logged "Resuming 1 unfinished call job(s)" and completed correctly.
   - Internally, it chunks the audio into 3-second pieces, batches 3 chunks
     per SageMaker request, and processes up to **2 batches concurrently**
-    (see test results below for why 2, not 3).
+    per job (see test results below for why 2, not 3). Jobs themselves are
+    processed one at a time, in submission order, by a single in-process
+    worker — not multiple jobs' batches running concurrently against each
+    other, which would exceed the proven-safe concurrency ceiling.
   - Code: `server/src/routes/external.ts`,
     `server/src/middleware/apiKeyAuth.ts`,
+    `server/src/external/jobStore.ts`, `server/src/external/jobQueue.ts`,
+    `server/src/external/webhook.ts`,
     `server/src/real-data/buildRealCall.ts`.
 
 ## What's been tested, and the real numbers
@@ -55,8 +78,13 @@ platform).
    sample call of ~4.6 minutes (274 seconds) was processed in **247.9
    seconds**, with no errors, using 2 concurrent batches. This gives a
    rule of thumb: **processing time is roughly equal to call length**
-   (~0.9x call duration in this test). This is the honest number to put in
-   the doc — it is not instant, and should not be implied to be.
+   (~0.9x call duration in this test). This number was measured against
+   real 8kHz call audio throughout (the chunking code always read the
+   actual sample rate from each file's header, never assumed 16kHz — only
+   the separate format *validator*, added afterward, briefly had the wrong
+   number), so this figure is not affected by that bug and still holds.
+   This is the honest number to put in the doc — it is not instant, and
+   should not be implied to be.
 2. **Why concurrency is capped at 2, not 3**: with 3 concurrent batches,
    the SageMaker endpoint returned a timeout error
    (`ModelError: ... invocation timed out while waiting for a response
@@ -64,9 +92,21 @@ platform).
    passed cleanly with no errors, on both a short (~1 min) and the ~4.6 min
    sample. So 2 is the current safe concurrency limit, not an arbitrary
    choice.
-3. **Error handling**: the endpoint returns `401` for a missing/invalid API
-   key, `400` for wrong content type, `413` if the body exceeds 50MB, and
-   `502` if the underlying model call fails.
+3. **Error handling**: every error uses the shape `{ error: { code,
+   message } }`. Confirmed codes: `missing_api_key`/`invalid_api_key` (401),
+   `invalid_content_type`/`invalid_audio_format` (400), `payload_too_large`
+   (413), `too_many_queued_jobs` (429, >5 queued/processing per partner),
+   `unknown_call_id` (404), `internal_error` (500).
+4. **Full end-to-end flow tested live** (not just type-checked): submit →
+   poll mid-processing (confirmed real partial chunks + progress) →
+   complete → webhook fired with a verified valid HMAC signature. Also
+   tested the crash-resume path for real (see above). This was tested
+   against a locally-run server connected to the real RDS database and the
+   real SageMaker endpoint — **not yet tested against the actual deployed
+   Render URL** after pushing. That's a remaining step before this is fully
+   verified in production, since Render's own request timeout, upload size
+   handling, and RDS latency from Render's network aren't exercised by a
+   local test.
 
 ## What is explicitly NOT ready yet (do not let the doc imply otherwise)
 
@@ -95,17 +135,23 @@ platform).
 (This was already scoped in an earlier planning pass — repeating here so
 the reviewer can check the draft against it.)
 
-1. Overview — what the endpoint does, who it's for.
+1. Overview — what the API does, who it's for, that it's recorded calls
+   only (not live).
 2. Authentication — `X-API-Key` header, how we issue/rotate keys.
-3. Endpoint reference — method, URL, headers, request body format,
-   response format (use the real JSON shapes above).
-4. Example request (`curl`) and example response.
-5. Error responses — the real codes/meanings listed above.
-6. Limits & current scope — max file size (50MB), **this is post-call/batch
-   only, not live/real-time** (state this plainly, don't bury it), and the
-   realistic turnaround time (~1x call duration, based on the real test
-   above — do not round this down to sound faster than it is).
-7. Support contact.
+3. Submit endpoint — `POST /v1/calls`, exact request format (8kHz mono
+   16-bit WAV — state this precisely, not "16kHz" and not vaguely "any
+   format, we resample" since we don't resample anything), optional
+   `X-Callback-Url`, the `202` response shape.
+4. Poll endpoint — `GET /v1/calls/{callId}`, the full response shape
+   including `progress` and partial `chunks` while processing.
+5. Webhook — signing scheme, retry behavior, when it fires.
+6. Error responses — the real codes/meanings listed above, consistent
+   shape.
+7. Limits & current scope — max file size (50MB), max 5 queued jobs per
+   partner, **recorded calls only, not live/real-time** (state this
+   plainly, don't bury it), realistic turnaround time (~1x call duration),
+   7-day result retention.
+8. Support contact.
 
 ## Review checklist for you (the supervisor)
 
@@ -122,3 +168,8 @@ the reviewer can check the draft against it.)
       instance types, or anything not relevant to an external integrator?
 - [ ] Is anything stated that isn't backed by something in this file? If
       so, flag it rather than letting it pass.
+- [ ] Does the doc state the accepted audio format exactly as 8kHz mono
+      16-bit PCM, with no ambiguity about whether resampling happens
+      (it doesn't)?
+- [ ] Does it describe the actual async flow (submit → `202` → poll/webhook),
+      not the old synchronous design?

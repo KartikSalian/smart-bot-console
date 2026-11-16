@@ -30,7 +30,9 @@ X-API-Key: <your key>
 Content-Type: audio/wav
 X-Callback-Url: https://your-server/webhook   (optional)
 
-Body: raw WAV audio — mono, 8kHz, 16-bit PCM, max 50MB
+Body: raw WAV audio — mono, 8kHz, 16-bit PCM, max 50MB.
+This is the exact format required; audio is not resampled on our side, so
+files at other sample rates will be rejected, not automatically converted.
 ```
 
 Validation happens immediately on upload — if the file isn't in the

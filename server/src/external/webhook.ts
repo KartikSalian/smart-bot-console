@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto'
 
-const MAX_ATTEMPTS = 3
-const RETRY_DELAYS_MS = [1_000, 5_000] // between attempts 1->2 and 2->3
+const MAX_ATTEMPTS = 4
+const RETRY_DELAYS_MS = [60_000, 300_000, 1_800_000] // 1min, 5min, 30min between attempts
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))

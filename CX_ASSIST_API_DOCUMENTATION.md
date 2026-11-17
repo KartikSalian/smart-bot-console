@@ -98,9 +98,22 @@ X-Signature: sha256=<hmac>
 The HMAC is computed over the raw JSON body using your API key as the
 signing secret (SHA-256). Verify it before trusting the payload.
 
-If your endpoint is unreachable or returns a non-2xx response, we log it
-but do not retry — poll `GET /v1/calls/{callId}` as a fallback if you
-rely on the webhook and suspect a delivery issue.
+**Delivery retries**: if your endpoint doesn't respond with a 2xx status
+(or doesn't respond within 10 seconds, which we count as a failure), we
+make up to 4 total delivery attempts: immediately, then after 1 minute,
+5 minutes, and 30 minutes. If all 4 fail, we give up and log it — there
+is no further retry after that.
+
+**You may receive the same webhook twice.** If your endpoint processes
+the payload successfully but responds slowly (past our 10-second
+timeout), we count that attempt as failed and retry it, which can result
+in you receiving the same `callId` payload more than once. Deduplicate
+on `callId` to handle this safely.
+
+Because the retry window (up to ~36 minutes) is not unlimited, poll
+`GET /api/external/v1/calls/{callId}` as a fallback if you rely on the
+webhook and suspect a delivery issue, or if it's been a while and you
+haven't received it.
 
 ## Errors
 

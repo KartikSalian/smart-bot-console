@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smartbot Call Analysis API</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --text: #1a1d23;
+    --muted: #5b6470;
+    --border: #e3e6ea;
+    --code-bg: #f6f7f9;
+    --accent: #2855c7;
+    --table-head: #f6f7f9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --text: #e8eaed;
+      --muted: #9aa2ab;
+      --border: #2a2d33;
+      --code-bg: #1c1f24;
+      --accent: #6e93ea;
+      --table-head: #1c1f24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 48px 16px 96px;
+  }
+  header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 24px;
+    margin-bottom: 40px;
+  }
+  header .brand {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  h1 {
+    font-size: 28px;
+    margin: 0 0 4px;
+  }
+  header .subtitle {
+    color: var(--muted);
+    font-size: 15px;
+  }
+  h2 {
+    font-size: 20px;
+    margin: 48px 0 16px;
+    padding-top: 8px;
+  }
+  h2:first-of-type { margin-top: 0; }
+  p { margin: 0 0 16px; }
+  strong { font-weight: 600; }
+  code {
+    background: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    overflow-x: auto;
+    font-size: 13.5px;
+  }
+  pre code {
+    background: none;
+    padding: 0;
+  }
+  ul { padding-left: 22px; margin: 0 0 16px; }
+  li { margin-bottom: 6px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0 0 16px;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    background: var(--table-head);
+    font-weight: 600;
+  }
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: var(--code-bg);
+    padding: 14px 16px;
+    border-radius: 6px;
+    margin: 0 0 16px;
+  }
+  footer {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 13.5px;
+  }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="brand">Smartbot Software</div>
+  <h1>Call Analysis API</h1>
+  <div class="subtitle">v1 — Recorded Calls</div>
+</header>
+
+<h2>Overview</h2>
+<p>This API analyzes a recorded call and returns emotion scores (anger, happy, neutral, sad) over time. Submit a call's audio, then poll for the result or receive it via a webhook once processing completes.</p>
+<div class="callout">
+  <strong>This API covers recorded/post-call audio only.</strong> Live, real-time analysis during an in-progress call is in active development and not yet available &mdash; there is no committed date for it yet. Submitting a call recording as soon as it ends is fully supported today.
+</div>
+
+<h2>Authentication</h2>
+<p>Every request requires an API key, provided to you separately, sent as a header:</p>
+<pre><code>X-API-Key: &lt;your key&gt;</code></pre>
+<p>Requests without a valid key return <code>401</code>.</p>
+
+<h2>1. Submit a call</h2>
+<pre><code>POST /api/external/v1/calls
+X-API-Key: &lt;your key&gt;
+Content-Type: audio/wav
+X-Callback-Url: https://your-server/webhook   (optional)
+
+Body: raw WAV audio — mono, 8kHz, 16-bit PCM, max 50MB.
+This is the exact format required; audio is not resampled on our side, so
+files at other sample rates will be rejected, not automatically converted.</code></pre>
+<p>Validation happens immediately on upload &mdash; if the file isn't in the expected format, you get a <code>400</code> back within about a second, not after the job has been queued.</p>
+<p><strong>Response &mdash; <code>202 Accepted</code>:</strong></p>
+<pre><code>{ "callId": "call_8f3a1c2e9b7d4f61", "status": "queued", "durationSec": 274.4 }</code></pre>
+
+<h2>2. Check status / get the result</h2>
+<pre><code>GET /api/external/v1/calls/{callId}
+X-API-Key: &lt;your key&gt;</code></pre>
+<p><strong>Response:</strong></p>
+<pre><code>{
+  "callId": "call_8f3a1c2e9b7d4f61",
+  "status": "processing",
+  "durationSec": 274.4,
+  "progress": 0.42,
+  "chunks": [
+    { "tSec": 0, "anger": 0.05, "happy": 0.10, "neutral": 0.80, "sad": 0.05 },
+    { "tSec": 3, "anger": 0.03, "happy": 0.02, "neutral": 0.55, "sad": 0.40 }
+  ],
+  "error": null
+}</code></pre>
+<ul>
+  <li><code>status</code> is one of <code>queued</code>, <code>processing</code>, <code>completed</code>, <code>failed</code>.</li>
+  <li><code>chunks</code> fills in progressively while <code>status</code> is <code>processing</code> &mdash; you don't need to wait for <code>completed</code> to start rendering a graph.</li>
+  <li>Each chunk covers a 3-second window of the call, starting at <code>tSec</code>.</li>
+  <li>When <code>status</code> is <code>failed</code>, <code>error</code> contains a short message; <code>chunks</code> will contain whatever was completed before the failure.</li>
+</ul>
+
+<h2>3. Webhook (optional, recommended)</h2>
+<p>If you included <code>X-Callback-Url</code> when submitting the call, we POST the final result to that URL once the job reaches <code>completed</code> or <code>failed</code>:</p>
+<pre><code>{
+  "callId": "call_8f3a1c2e9b7d4f61",
+  "status": "completed",
+  "durationSec": 274.4,
+  "chunks": [ ... ],
+  "error": null
+}</code></pre>
+<p>The request includes a signature header so you can verify it came from us:</p>
+<pre><code>X-Signature: sha256=&lt;hmac&gt;</code></pre>
+<p>The HMAC is computed over the raw JSON body using your API key as the signing secret (SHA-256). Verify it before trusting the payload.</p>
+<p><strong>Delivery retries</strong>: if your endpoint doesn't respond with a 2xx status (or doesn't respond within 10 seconds, which we count as a failure), we make up to 4 total delivery attempts: immediately, then after 1 minute, 5 minutes, and 30 minutes. If all 4 fail, we give up and log it &mdash; there is no further retry after that.</p>
+<p><strong>You may receive the same webhook twice.</strong> If your endpoint processes the payload successfully but responds slowly (past our 10-second timeout), we count that attempt as failed and retry it, which can result in you receiving the same <code>callId</code> payload more than once. Deduplicate on <code>callId</code> to handle this safely.</p>
+<p>Because the retry window (up to ~36 minutes) is not unlimited, poll <code>GET /api/external/v1/calls/{callId}</code> as a fallback if you rely on the webhook and suspect a delivery issue, or if it's been a while and you haven't received it.</p>
+
+<h2>Errors</h2>
+<p>All errors use one consistent shape:</p>
+<pre><code>{ "error": { "code": "invalid_audio_format", "message": "Expected mono 8kHz WAV" } }</code></pre>
+<table>
+  <thead><tr><th>HTTP Status</th><th>Code</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td>400</td><td><code>invalid_content_type</code></td><td><code>Content-Type</code> header wasn't <code>audio/wav</code></td></tr>
+    <tr><td>400</td><td><code>invalid_audio_format</code></td><td>File isn't valid mono/8kHz/16-bit WAV</td></tr>
+    <tr><td>401</td><td><code>missing_api_key</code></td><td>No <code>X-API-Key</code> header sent</td></tr>
+    <tr><td>401</td><td><code>invalid_api_key</code></td><td><code>X-API-Key</code> doesn't match a known key</td></tr>
+    <tr><td>404</td><td><code>unknown_call_id</code></td><td>No job exists with that <code>callId</code> for your key</td></tr>
+    <tr><td>413</td><td><code>payload_too_large</code></td><td>File exceeds the 50MB limit</td></tr>
+    <tr><td>429</td><td><code>too_many_queued_jobs</code></td><td>More than 5 jobs already queued/processing for your key</td></tr>
+    <tr><td>500 / 502</td><td><code>internal_error</code></td><td>Something failed on our end &mdash; safe to retry</td></tr>
+  </tbody>
+</table>
+
+<h2>Limits &amp; current scope</h2>
+<ul>
+  <li><strong>Recorded calls only.</strong> No live/streaming support yet.</li>
+  <li>Max file size: 50MB per call.</li>
+  <li>Max 5 jobs queued/processing at once per API key &mdash; submit more once earlier ones complete.</li>
+  <li><strong>Processing time is roughly equal to the call's length.</strong> In testing, a 274-second (~4.6 minute) call took about 248 seconds to fully process. Longer calls take proportionally longer; this is not instantaneous, and progress should be shown as the job works through the call.</li>
+  <li>Results are retained for 7 days after completion, then deleted.</li>
+</ul>
+
+<h2>Support</h2>
+<p>For integration issues or questions, contact Kartik Salian directly.</p>
+
+<footer>Smartbot Software &mdash; Call Analysis API Documentation</footer>
+
+</div>
+</body>
+</html>

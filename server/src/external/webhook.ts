@@ -1,41 +1,32 @@
 import { createHmac } from 'node:crypto'
 
-const MAX_ATTEMPTS = 4
-const RETRY_DELAYS_MS = [60_000, 300_000, 1_800_000] // 1min, 5min, 30min between attempts
+export const MAX_WEBHOOK_ATTEMPTS = 4
+// Delay before each retry after a failed attempt (index 0 = delay before attempt 2, etc).
+// Long waits are tracked in the database (see webhookPoller.ts), not an in-memory timer, so a
+// server restart mid-wait doesn't silently drop the retry.
+export const WEBHOOK_RETRY_DELAYS_MS = [60_000, 300_000, 1_800_000] // 1min, 5min, 30min
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-/** Signs and POSTs the final job result to a partner's callback URL, retrying a couple of times
- * on failure. Best-effort overall: if all attempts fail, it's logged but never thrown -- a
- * partner's unreachable webhook must not affect job processing. */
-export async function sendWebhook(url: string, secret: string, payload: unknown): Promise<void> {
+/** Signs and makes a single delivery attempt to a partner's callback URL. Never throws -- a
+ * partner's unreachable webhook must not affect job processing. Returns whether it succeeded. */
+export async function deliverWebhookOnce(url: string, secret: string, payload: unknown): Promise<boolean> {
   const body = JSON.stringify(payload)
   const signature = createHmac('sha256', secret).update(body).digest('hex')
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Signature': `sha256=${signature}`,
-        },
-        body,
-        signal: AbortSignal.timeout(10_000),
-      })
-      if (res.ok) return
-
-      console.error(`Webhook to ${url} returned ${res.status} (attempt ${attempt}/${MAX_ATTEMPTS})`)
-    } catch (err) {
-      console.error(`Webhook to ${url} failed (attempt ${attempt}/${MAX_ATTEMPTS}):`, err)
-    }
-
-    if (attempt < MAX_ATTEMPTS) {
-      await sleep(RETRY_DELAYS_MS[attempt - 1])
-    }
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Signature': `sha256=${signature}`,
+      },
+      body,
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (res.ok) return true
+    console.error(`Webhook to ${url} returned ${res.status}`)
+    return false
+  } catch (err) {
+    console.error(`Webhook to ${url} failed:`, err)
+    return false
   }
-
-  console.error(`Webhook to ${url} did not succeed after ${MAX_ATTEMPTS} attempts, giving up`)
 }

@@ -1,7 +1,5 @@
 import { buildRealSentimentSeries } from '../real-data/buildRealCall.js'
-import { completeJob, failJob, getJob, getUnfinishedJobs, updateJobProgress } from './jobStore.js'
-import { getApiKeyForPartner } from '../middleware/apiKeyAuth.js'
-import { sendWebhook } from './webhook.js'
+import { completeJob, failJob, getUnfinishedJobs, markWebhookPending, updateJobProgress } from './jobStore.js'
 
 // The queue itself only holds job ids -- the audio stays in the database (call_jobs.audio) until
 // a job completes or fails, which is what lets a queued/in-progress job survive a server restart
@@ -47,30 +45,11 @@ async function processJob(callId: string, wav: Buffer): Promise<void> {
     })
 
     await completeJob(callId, series)
-    await notifyWebhook(callId)
+    await markWebhookPending(callId)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     console.error(`Job ${callId} failed:`, err)
     await failJob(callId, message)
-    await notifyWebhook(callId)
+    await markWebhookPending(callId)
   }
-}
-
-async function notifyWebhook(callId: string): Promise<void> {
-  const job = await getJob(callId)
-  if (!job?.callbackUrl) return
-
-  const secret = getApiKeyForPartner(job.partner)
-  if (!secret) {
-    console.error(`No API key found for partner ${job.partner}, skipping webhook signing`)
-    return
-  }
-
-  await sendWebhook(job.callbackUrl, secret, {
-    callId: job.id,
-    status: job.status,
-    durationSec: job.durationSec,
-    chunks: job.chunks,
-    error: job.error,
-  })
 }

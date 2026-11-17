@@ -78,6 +78,64 @@ export async function failJob(id: string, error: string): Promise<void> {
   )
 }
 
+/** Marks a just-finished job as having a webhook delivery due immediately. No-op if it has no callback_url. */
+export async function markWebhookPending(id: string): Promise<void> {
+  await pool.query(
+    `UPDATE call_jobs SET webhook_status = 'pending', webhook_attempts = 0, webhook_next_at = now()
+     WHERE id = $1 AND callback_url IS NOT NULL`,
+    [id],
+  )
+}
+
+export interface DueWebhook {
+  id: string
+  partner: string
+  callbackUrl: string
+  attempts: number
+  status: JobStatus
+  durationSec: number | null
+  chunks: RealSentimentChunk[]
+  error: string | null
+}
+
+/** Jobs with a webhook delivery due now or earlier (including ones scheduled before a restart). */
+export async function getDueWebhooks(): Promise<DueWebhook[]> {
+  const { rows } = await pool.query(
+    `SELECT id, partner, callback_url, webhook_attempts, status, duration_sec, chunks, error
+     FROM call_jobs WHERE webhook_status = 'pending' AND webhook_next_at <= now()`,
+  )
+  return rows.map((r) => ({
+    id: r.id,
+    partner: r.partner,
+    callbackUrl: r.callback_url,
+    attempts: r.webhook_attempts,
+    status: r.status,
+    durationSec: r.duration_sec,
+    chunks: r.chunks,
+    error: r.error,
+  }))
+}
+
+export async function markWebhookDelivered(id: string): Promise<void> {
+  await pool.query(`UPDATE call_jobs SET webhook_status = 'delivered', updated_at = now() WHERE id = $1`, [id])
+}
+
+/** Records a failed delivery attempt: schedules the next retry, or gives up if out of attempts. */
+export async function recordWebhookFailure(id: string, attempts: number, nextDelayMs: number | null): Promise<void> {
+  if (nextDelayMs === null) {
+    await pool.query(
+      `UPDATE call_jobs SET webhook_status = 'failed', webhook_attempts = $2, updated_at = now() WHERE id = $1`,
+      [id, attempts],
+    )
+  } else {
+    await pool.query(
+      `UPDATE call_jobs SET webhook_attempts = $2, webhook_next_at = now() + $3::interval, updated_at = now()
+       WHERE id = $1`,
+      [id, attempts, `${nextDelayMs / 1000} seconds`],
+    )
+  }
+}
+
 export async function countActiveJobsForPartner(partner: string): Promise<number> {
   const { rows } = await pool.query(
     `SELECT count(*) FROM call_jobs WHERE partner = $1 AND status IN ('queued', 'processing')`,

@@ -8,6 +8,7 @@ import liveRoutes from './routes/live.js'
 import externalRoutes from './routes/external.js'
 import { deleteOldJobs } from './external/jobStore.js'
 import { resumeUnfinishedJobs } from './external/jobQueue.js'
+import { startWebhookPoller } from './external/webhookPoller.js'
 
 const app = express()
 const PORT = process.env.PORT || 4000
@@ -40,3 +41,4 @@ app.listen(PORT, () => {
 })
 
 void resumeUnfinishedJobs().catch((err) => console.error('Failed to resume unfinished call jobs:', err))
+startWebhookPoller()

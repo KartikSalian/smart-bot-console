@@ -31,11 +31,13 @@ CREATE TABLE IF NOT EXISTS call_jobs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_call_jobs_partner_status ON call_jobs (partner, status);
-CREATE INDEX IF NOT EXISTS idx_call_jobs_webhook_due ON call_jobs (webhook_status, webhook_next_at);
 
 -- CREATE TABLE IF NOT EXISTS above is a no-op once the table already exists, so new columns
--- added later need an explicit ALTER TABLE to reach existing deployments.
+-- added later need an explicit ALTER TABLE to reach existing deployments. These must run before
+-- any index that references them.
 ALTER TABLE call_jobs ADD COLUMN IF NOT EXISTS audio BYTEA;
 ALTER TABLE call_jobs ADD COLUMN IF NOT EXISTS webhook_status TEXT NOT NULL DEFAULT 'none';
 ALTER TABLE call_jobs ADD COLUMN IF NOT EXISTS webhook_attempts INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE call_jobs ADD COLUMN IF NOT EXISTS webhook_next_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_call_jobs_webhook_due ON call_jobs (webhook_status, webhook_next_at);
